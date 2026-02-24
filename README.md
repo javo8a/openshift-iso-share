@@ -80,7 +80,7 @@ A separate pod runs a **browser-based web proxy** on port 8080. Open the proxy U
 - **Route**: `oc get route html-proxy -o jsonpath='{.spec.host}'` — open `https://<host>/` in a browser.
 - **In-cluster**: Service `html-proxy:8080` — use `http://html-proxy.<namespace>.svc.cluster.local:8080` from other pods.
 
-The proxy uses the `nibrev/nginx-iframe-proxy` image. If your cluster enforces non-root pods and the deployment fails, you may need to relax the namespace’s pod security or use a different image.
+The proxy runs a small Python server (non-root) that serves the browser UI and fetches URLs for the iframe.
 
 ## Optional: Custom image with rsync
 
