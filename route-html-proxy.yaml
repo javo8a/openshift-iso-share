@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: html-proxy
+  labels:
+    app: iso-share
+    component: html-proxy
+spec:
+  to:
+    kind: Service
+    name: html-proxy
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+  wildcardPolicy: None

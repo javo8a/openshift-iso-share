@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: html-proxy-index
+  labels:
+    app: iso-share
+    component: html-proxy
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Web proxy</title>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #1a1a2e; color: #eee; min-height: 100vh; }
+        .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        input[type="url"], input[type="text"] { flex: 1; min-width: 200px; padding: 10px 12px; border: 1px solid #444; border-radius: 6px; background: #16213e; color: #eee; font-size: 14px; }
+        input::placeholder { color: #888; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; background: #0f3460; color: #eee; cursor: pointer; font-size: 14px; }
+        button:hover { background: #133b5c; }
+        #frame { width: 100%; height: calc(100vh - 56px); min-height: 400px; border: 1px solid #333; border-radius: 6px; background: #0f0f1a; }
+      </style>
+    </head>
+    <body>
+      <div class="bar">
+        <input type="url" id="url" placeholder="Enter URL (e.g. https://example.com)" autocomplete="off">
+        <button type="button" id="go">Go</button>
+      </div>
+      <iframe id="frame" title="Proxied content"></iframe>
+      <script>
+        var urlEl = document.getElementById('url');
+        var frame = document.getElementById('frame');
+        var goBtn = document.getElementById('go');
+        function load() {
+          var u = (urlEl.value || '').trim();
+          if (!u) return;
+          if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+          urlEl.value = u;
+          frame.src = '/r?uri=' + encodeURIComponent(u);
+        }
+        goBtn.addEventListener('click', load);
+        urlEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); load(); } });
+      </script>
+    </body>
+    </html>

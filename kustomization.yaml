@@ -4,10 +4,14 @@ kind: Kustomization
 resources:
   - pvc.yaml
   - nginx-configmap.yaml
+  - html-proxy-configmap.yaml
   - buildconfig.yaml
   - deployment.yaml
+  - deployment-html-proxy.yaml
   - service.yaml
+  - service-html-proxy.yaml
   - route.yaml
+  - route-html-proxy.yaml
 
 commonLabels:
   app: iso-share

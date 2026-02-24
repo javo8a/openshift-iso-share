@@ -11,8 +11,9 @@ oc new-project iso-share
 # Deploy all resources
 oc apply -k .
 
-# Get the share URL
+# Get the share URL (file server) and HTML proxy URL
 oc get route iso-share
+oc get route html-proxy
 ```
 
 ## Uploading an ISO
@@ -21,7 +22,7 @@ After the pod is running, copy your ISO to the PVC:
 
 ```bash
 # Get the pod name
-POD=$(oc get pods -l app=iso-share -o jsonpath='{.items[0].metadata.name}')
+POD=$(oc get pods -l component=iso-share -o jsonpath='{.items[0].metadata.name}')
 
 # Upload your ISO
 oc cp /path/to/your-image.iso $POD:/usr/share/nginx/html/
@@ -43,7 +44,7 @@ oc rsync /path/to/your-image.iso $POD:/usr/share/nginx/html/
 ### Copy from the pod to your machine (`oc cp`)
 
 ```bash
-POD=$(oc get pods -l app=iso-share -o jsonpath='{.items[0].metadata.name}')
+POD=$(oc get pods -l component=iso-share -o jsonpath='{.items[0].metadata.name}')
 oc cp $POD:/usr/share/nginx/html/your-image.iso ./backup-your-image.iso
 ```
 
@@ -52,7 +53,7 @@ oc cp $POD:/usr/share/nginx/html/your-image.iso ./backup-your-image.iso
 If you built the [custom image with rsync](#optional-custom-image-with-rsync), `oc rsync` supports resumable transfers. Otherwise use `oc cp`:
 
 ```bash
-POD=$(oc get pods -l app=iso-share -o jsonpath='{.items[0].metadata.name}')
+POD=$(oc get pods -l component=iso-share -o jsonpath='{.items[0].metadata.name}')
 # With custom image (rsync - resumable):
 oc rsync $POD:/usr/share/nginx/html/ ./local-backup-dir/
 # With default image (oc cp):
@@ -71,6 +72,15 @@ curl -k -o backup-your-image.iso "https://$ROUTE/your-image.iso"
 ### PVC snapshot
 
 For a volume-level backup, create a VolumeSnapshot (requires a StorageClass that supports snapshots, e.g. OpenShift Data Foundation). Use the OpenShift Console: **Storage → Persistent Volume Claims →** select `iso-storage` **→ Actions → Create Snapshot**. Or apply a `VolumeSnapshot` manifest for your storage provider.
+
+## HTML proxy (browser)
+
+A separate pod runs a **browser-based web proxy** on port 8080. Open the proxy URL in a browser, enter any URL in the form, and view the site in the same page (proxied in an iframe).
+
+- **Route**: `oc get route html-proxy -o jsonpath='{.spec.host}'` — open `https://<host>/` in a browser.
+- **In-cluster**: Service `html-proxy:8080` — use `http://html-proxy.<namespace>.svc.cluster.local:8080` from other pods.
+
+The proxy uses the `nibrev/nginx-iframe-proxy` image. If your cluster enforces non-root pods and the deployment fails, you may need to relax the namespace’s pod security or use a different image.
 
 ## Optional: Custom image with rsync
 
