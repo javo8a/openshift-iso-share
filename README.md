@@ -48,6 +48,8 @@ For files larger than 100 MB, the listing page shows:
 
 Use chunks when you want to download in parts or combine them later; use **Full file** for one direct download.
 
+**Download all chunks (one click):** For chunked files, the **Download all** button fetches each part in order, combines them in memory, and triggers a single download with the original filename. You get one save dialog and one file—no special browser permissions. For very large files this uses RAM equal to the file size; if the tab runs out of memory, use the individual **Part 1**, **Part 2**, … links and combine them locally (e.g. `cat file.iso.part* > file.iso`).
+
 ## Backing up the ISO
 
 ### Copy from the pod to your machine (`oc cp`)

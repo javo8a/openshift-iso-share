@@ -48,7 +48,7 @@ data:
         if base_path:
             parent = os.path.dirname(base_path.rstrip("/"))
             rows.append(
-                '<tr><td colspan="4"><a href="%s">../</a></td></tr>'
+                '<tr><td colspan="5"><a href="%s">../</a></td></tr>'
                 % (parent + "/" if parent else "/")
             )
         for e in entries:
@@ -58,7 +58,7 @@ data:
                 if not href.startswith("/"):
                     href = "/" + href
                 rows.append(
-                    '<tr><td><a href="%s">%s/</a></td><td></td><td></td><td></td></tr>'
+                    '<tr><td><a href="%s">%s/</a></td><td></td><td></td><td></td><td></td></tr>'
                     % (href, html_escape(name))
                 )
             else:
@@ -78,19 +78,27 @@ data:
                         )
                     chunk_cell = " | ".join(chunk_links)
                     full_link = '<a href="%s">Full file</a>' % href_file
+                    dl_all_btn = (
+                        '<button type="button" class="dl-all-btn" data-href="%s" data-name="%s" data-nchunks="%d">Download all chunks</button>'
+                        % (html_escape(href_file), html_escape(name), n_chunks)
+                    )
                     rows.append(
-                        '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
-                        % (html_escape(name), format_size(size), chunk_cell, full_link)
+                        '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                        % (html_escape(name), format_size(size), chunk_cell, full_link, dl_all_btn)
                     )
                 else:
                     rows.append(
-                        '<tr><td><a href="%s">%s</a></td><td>%s</td><td></td><td></td></tr>'
+                        '<tr><td><a href="%s">%s</a></td><td>%s</td><td></td><td></td><td></td></tr>'
                         % (href_file, html_escape(name), format_size(size))
                     )
         return "\n".join(rows)
 
     def html_escape(s):
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+    def safe_filename_header(name):
+        """Escape for Content-Disposition filename= value."""
+        return name.replace("\\", "\\\\").replace('"', '\\"')
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -111,8 +119,37 @@ data:
                 html = (
                     "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Index of %s</title>"
                     "<style>body{font-family:system-ui,sans-serif} table{border-collapse:collapse}"
-                    "td,th{padding:6px 12px;text-align:left} a{color:#06c}</style></head><body>"
-                    "<h1>Index of %s</h1><table><tr><th>Name</th><th>Size</th><th>Chunks (100 MB)</th><th>Full</th></tr>%s</table></body></html>"
+                    "td,th{padding:6px 12px;text-align:left} a{color:#06c} .dl-all-btn{padding:6px 12px;cursor:pointer;background:#06c;color:#fff;border:none;border-radius:4px}"
+                    ".dl-all-btn:hover{background:#05a} .dl-all-btn:disabled{opacity:.6;cursor:not-allowed}"
+                    "#dl-status{margin-top:12px;font-size:14px}</style></head><body>"
+                    "<h1>Index of %s</h1><div id='dl-status'></div><table><tr><th>Name</th><th>Size</th><th>Chunks (100 MB)</th><th>Full</th><th>Download all</th></tr>%s</table>"
+                    "<script>"
+                    "document.querySelectorAll('.dl-all-btn').forEach(function(btn){"
+                    "btn.onclick=function(){"
+                    "var href=btn.getAttribute('data-href'), name=btn.getAttribute('data-name'), n=parseInt(btn.getAttribute('data-nchunks'),10);"
+                    "if(!href||!n){return}"
+                    "var status=document.getElementById('dl-status');"
+                    "function setStatus(t){status.textContent=t; status.style.color='#000'}"
+                    "function setErr(t){status.textContent=t; status.style.color='#c00'}"
+                    "btn.disabled=true;"
+                    "var parts=[];"
+                    "function fetchNext(i){"
+                    "if(i>n){"
+                    "setStatus('Combining and saving...');"
+                    "var blob=new Blob(parts);"
+                    "var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;"
+                    "document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);"
+                    "setStatus('Done. Saved as '+name); btn.disabled=false; return;"
+                    "}"
+                    "setStatus('Downloading part '+i+' of '+n+'...');"
+                    "fetch(href+'?chunk='+i).then(function(r){if(!r.ok)throw new Error(r.status); return r.arrayBuffer()}).then(function(buf){"
+                    "parts.push(buf); fetchNext(i+1);"
+                    "}).catch(function(e){setErr('Failed part '+i+': '+e.message); btn.disabled=false})"
+                    "};"
+                    "fetchNext(1);"
+                    "};"
+                    "});"
+                    "</script></body></html>"
                     % (html_escape(path), html_escape(path), table)
                 )
                 self.send_response(200)
@@ -131,7 +168,11 @@ data:
                         break
                     except ValueError:
                         pass
-            size = os.path.getsize(full)
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                self.send_error(404)
+                return
             if chunk_param is not None:
                 if chunk_param < 1:
                     self.send_error(400, "Invalid chunk")
@@ -141,36 +182,54 @@ data:
                     self.send_error(404, "Chunk out of range")
                     return
                 end = min(start + CHUNK_SIZE, size) - 1
-                self.send_response(206)
-                self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
-                self.send_header("Content-Length", str(end - start + 1))
+                chunk_len = end - start + 1
+                # Use 200 OK + filename so the browser saves the chunk as a file (206 can fail in Chrome)
+                base_name = os.path.basename(full)
+                part_filename = "%s.part%d" % (base_name, chunk_param)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(chunk_len))
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Disposition", 'attachment; filename="%s"' % safe_filename_header(part_filename))
+                    self.end_headers()
+                    with open(full, "rb") as f:
+                        f.seek(start)
+                        remaining = chunk_len
+                        while remaining > 0:
+                            buf = f.read(min(65536, remaining))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            remaining -= len(buf)
+                    self.wfile.flush()
+                except (OSError, BrokenPipeError) as e:
+                    if not self.wfile.closed:
+                        try:
+                            self.send_error(500, str(e))
+                        except Exception:
+                            pass
+                return
+            # full file: stream in 100MB chunks
+            try:
+                self.send_response(200)
                 ct, _ = mimetypes.guess_type(full)
                 self.send_header("Content-Type", ct or "application/octet-stream")
                 self.send_header("Content-Disposition", "attachment")
+                self.send_header("Content-Length", str(size))
                 self.end_headers()
                 with open(full, "rb") as f:
-                    f.seek(start)
-                    remaining = end - start + 1
-                    while remaining > 0:
-                        buf = f.read(min(8192, remaining))
+                    while True:
+                        buf = f.read(CHUNK_SIZE)
                         if not buf:
                             break
                         self.wfile.write(buf)
-                        remaining -= len(buf)
-                return
-            # full file: stream in 100MB chunks
-            self.send_response(200)
-            ct, _ = mimetypes.guess_type(full)
-            self.send_header("Content-Type", ct or "application/octet-stream")
-            self.send_header("Content-Disposition", "attachment")
-            self.send_header("Content-Length", str(size))
-            self.end_headers()
-            with open(full, "rb") as f:
-                while True:
-                    buf = f.read(CHUNK_SIZE)
-                    if not buf:
-                        break
-                    self.wfile.write(buf)
+                self.wfile.flush()
+            except (OSError, BrokenPipeError) as e:
+                if not self.wfile.closed:
+                    try:
+                        self.send_error(500, str(e))
+                    except Exception:
+                        pass
             return
 
         def log_message(self, format, *args):
