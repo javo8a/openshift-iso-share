@@ -39,16 +39,16 @@ oc rsync /path/to/your-image.iso $POD:/usr/share/nginx/html/
 2. Open `https://<hostname>/` to see the directory listing
 3. Click your ISO filename to download, or use: `https://<hostname>/your-image.iso`
 
-### Large files (100 MB chunks)
+### Large files (97 MB chunks)
 
-For files larger than 100 MB, the listing page shows:
+For files larger than 97 MB, the listing page shows:
 
-- **Chunks (100 MB)**: separate links for each 100 MB part (Part 1, Part 2, …) so you can download or resume in segments.
-- **Full file**: a single link that streams the entire file (server reads in 100 MB chunks, so you get one continuous download).
+- **Chunks (97 MB)**: separate links for each 97 MB part (Part aa, Part ab, …) so you can download or resume in segments.
+- **Full file**: a single link that streams the entire file (server reads in 97 MB chunks, so you get one continuous download).
 
 Use chunks when you want to download in parts or combine them later; use **Full file** for one direct download.
 
-**Download all chunks (one click):** For chunked files, the **Download all** button fetches each part in order, combines them in memory, and triggers a single download with the original filename. You get one save dialog and one file—no special browser permissions. For very large files this uses RAM equal to the file size; if the tab runs out of memory, use the individual **Part 1**, **Part 2**, … links and combine them locally (e.g. `cat file.iso.part* > file.iso`).
+**Download all chunks (one click):** For chunked files, the **Download all** button fetches each part in order, combines them in memory, and triggers a single download with the original filename. You get one save dialog and one file—no special browser permissions. For very large files this uses RAM equal to the file size; if the tab runs out of memory, use the individual **Part aa**, **Part ab**, … links and combine them locally (e.g. `cat file.iso.part* > file.iso`). Chunk files use the suffix `.partaa`, `.partab`, `.partac`, … so they sort correctly when concatenating.
 
 ## Backing up the ISO
 

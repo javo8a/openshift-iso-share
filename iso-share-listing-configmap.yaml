@@ -7,14 +7,14 @@ metadata:
 data:
   server.py: |
     #!/usr/bin/env python3
-    """Serves directory listing with 100MB chunk links and streams files (chunked or full)."""
+    """Serves directory listing with 97MB chunk links and streams files (chunked or full)."""
     import os
     import mimetypes
     from http.server import HTTPServer, BaseHTTPRequestHandler
     from urllib.parse import unquote, urlparse
 
     ROOT = os.environ.get("ISO_ROOT", "/usr/share/nginx/html")
-    CHUNK_MB = 100
+    CHUNK_MB = 97
     CHUNK_SIZE = CHUNK_MB * 1024 * 1024
     PORT = int(os.environ.get("PORT", "9000"))
 
@@ -29,6 +29,11 @@ data:
         if not full.startswith(os.path.normpath(ROOT)):
             return None
         return full
+
+    def chunk_suffix(n):
+        """Part index 1,2,3,... -> 'aa','ab','ac',... for sortable filenames."""
+        n0 = n - 1
+        return chr(ord("a") + n0 // 26) + chr(ord("a") + n0 % 26)
 
     def format_size(n):
         if n >= 1024 ** 3:
@@ -73,8 +78,8 @@ data:
                         start = (i - 1) * CHUNK_SIZE
                         end = min(i * CHUNK_SIZE, size) - 1
                         chunk_links.append(
-                            '<a href="%s?chunk=%d">Part %d (%s–%s)</a>'
-                            % (href_file, i, i, format_size(start), format_size(end + 1))
+                            '<a href="%s?chunk=%d">Part %s (%s–%s)</a>'
+                            % (href_file, i, chunk_suffix(i), format_size(start), format_size(end + 1))
                         )
                     chunk_cell = " | ".join(chunk_links)
                     full_link = '<a href="%s">Full file</a>' % href_file
@@ -122,7 +127,7 @@ data:
                     "td,th{padding:6px 12px;text-align:left} a{color:#06c} .dl-all-btn{padding:6px 12px;cursor:pointer;background:#06c;color:#fff;border:none;border-radius:4px}"
                     ".dl-all-btn:hover{background:#05a} .dl-all-btn:disabled{opacity:.6;cursor:not-allowed}"
                     "#dl-status{margin-top:12px;font-size:14px}</style></head><body>"
-                    "<h1>Index of %s</h1><div id='dl-status'></div><table><tr><th>Name</th><th>Size</th><th>Chunks (100 MB)</th><th>Full</th><th>Download all</th></tr>%s</table>"
+                    "<h1>Index of %s</h1><div id='dl-status'></div><table><tr><th>Name</th><th>Size</th><th>Chunks (97 MB)</th><th>Full</th><th>Download all</th></tr>%s</table>"
                     "<script>"
                     "document.querySelectorAll('.dl-all-btn').forEach(function(btn){"
                     "btn.onclick=function(){"
@@ -185,7 +190,7 @@ data:
                 chunk_len = end - start + 1
                 # Use 200 OK + filename so the browser saves the chunk as a file (206 can fail in Chrome)
                 base_name = os.path.basename(full)
-                part_filename = "%s.part%d" % (base_name, chunk_param)
+                part_filename = "%s.part%s" % (base_name, chunk_suffix(chunk_param))
                 try:
                     self.send_response(200)
                     self.send_header("Content-Length", str(chunk_len))
@@ -209,7 +214,7 @@ data:
                         except Exception:
                             pass
                 return
-            # full file: stream in 100MB chunks
+            # full file: stream in 97MB chunks
             try:
                 self.send_response(200)
                 ct, _ = mimetypes.guess_type(full)
