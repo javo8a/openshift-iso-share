@@ -14,8 +14,9 @@ data:
     from urllib.parse import unquote, urlparse
 
     ROOT = os.environ.get("ISO_ROOT", "/usr/share/nginx/html")
+    # Use decimal MB (1000) so chunk is under 100 MB and browsers don't block (97 MiB = 101.7 MB)
     CHUNK_MB = 97
-    CHUNK_SIZE = CHUNK_MB * 1024 * 1024
+    CHUNK_SIZE = CHUNK_MB * 1000 * 1000
     PORT = int(os.environ.get("PORT", "9000"))
 
     def safe_path(path):

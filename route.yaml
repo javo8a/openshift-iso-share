@@ -4,6 +4,9 @@ metadata:
   name: iso-share
   labels:
     app: iso-share
+  annotations:
+    # Allow long-running chunk downloads (default is 30s)
+    haproxy.router.openshift.io/timeout: 600s
 spec:
   to:
     kind: Service
