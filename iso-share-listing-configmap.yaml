@@ -1,0 +1,179 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iso-share-listing
+  labels:
+    app: iso-share
+data:
+  server.py: |
+    #!/usr/bin/env python3
+    """Serves directory listing with 100MB chunk links and streams files (chunked or full)."""
+    import os
+    import mimetypes
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    from urllib.parse import unquote, urlparse
+
+    ROOT = os.environ.get("ISO_ROOT", "/usr/share/nginx/html")
+    CHUNK_MB = 100
+    CHUNK_SIZE = CHUNK_MB * 1024 * 1024
+    PORT = int(os.environ.get("PORT", "9000"))
+
+    def safe_path(path):
+        path = unquote(path)
+        if path.startswith("/"):
+            path = path[1:]
+        path = os.path.normpath(path)
+        if path == ".":
+            path = ""
+        full = os.path.normpath(os.path.join(ROOT, path))
+        if not full.startswith(os.path.normpath(ROOT)):
+            return None
+        return full
+
+    def format_size(n):
+        if n >= 1024 ** 3:
+            return "%.1f GiB" % (n / 1024 ** 3)
+        if n >= 1024 ** 2:
+            return "%.1f MiB" % (n / 1024 ** 2)
+        if n >= 1024:
+            return "%.1f KiB" % (n / 1024)
+        return "%d B" % n
+
+    def html_listing(dir_path, base_path):
+        try:
+            entries = sorted(os.scandir(dir_path), key=lambda e: (e.is_file(), e.name.lower()))
+        except OSError:
+            return None
+        rows = []
+        if base_path:
+            parent = os.path.dirname(base_path.rstrip("/"))
+            rows.append(
+                '<tr><td colspan="4"><a href="%s">../</a></td></tr>'
+                % (parent + "/" if parent else "/")
+            )
+        for e in entries:
+            name = e.name
+            if e.is_dir():
+                href = (base_path + name + "/").lstrip("/") or "/"
+                if not href.startswith("/"):
+                    href = "/" + href
+                rows.append(
+                    '<tr><td><a href="%s">%s/</a></td><td></td><td></td><td></td></tr>'
+                    % (href, html_escape(name))
+                )
+            else:
+                size = e.stat().st_size
+                href_file = (base_path + name).lstrip("/") or name
+                if not href_file.startswith("/"):
+                    href_file = "/" + href_file
+                if size > CHUNK_SIZE:
+                    n_chunks = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+                    chunk_links = []
+                    for i in range(1, n_chunks + 1):
+                        start = (i - 1) * CHUNK_SIZE
+                        end = min(i * CHUNK_SIZE, size) - 1
+                        chunk_links.append(
+                            '<a href="%s?chunk=%d">Part %d (%s–%s)</a>'
+                            % (href_file, i, i, format_size(start), format_size(end + 1))
+                        )
+                    chunk_cell = " | ".join(chunk_links)
+                    full_link = '<a href="%s">Full file</a>' % href_file
+                    rows.append(
+                        '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                        % (html_escape(name), format_size(size), chunk_cell, full_link)
+                    )
+                else:
+                    rows.append(
+                        '<tr><td><a href="%s">%s</a></td><td>%s</td><td></td><td></td></tr>'
+                        % (href_file, html_escape(name), format_size(size))
+                    )
+        return "\n".join(rows)
+
+    def html_escape(s):
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = urlparse(self.path).path.rstrip("/") or "/"
+            base_path = path[1:] + "/" if path != "/" else ""
+            full = safe_path(path)
+            if full is None:
+                self.send_error(403)
+                return
+            if not os.path.exists(full):
+                self.send_error(404)
+                return
+            if os.path.isdir(full):
+                table = html_listing(full, base_path)
+                if table is None:
+                    self.send_error(403)
+                    return
+                html = (
+                    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Index of %s</title>"
+                    "<style>body{font-family:system-ui,sans-serif} table{border-collapse:collapse}"
+                    "td,th{padding:6px 12px;text-align:left} a{color:#06c}</style></head><body>"
+                    "<h1>Index of %s</h1><table><tr><th>Name</th><th>Size</th><th>Chunks (100 MB)</th><th>Full</th></tr>%s</table></body></html>"
+                    % (html_escape(path), html_escape(path), table)
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+                self.end_headers()
+                self.wfile.write(html.encode("utf-8"))
+                return
+            # file
+            query = urlparse(self.path).query
+            chunk_param = None
+            for part in query.split("&"):
+                if part.startswith("chunk="):
+                    try:
+                        chunk_param = int(part.split("=", 1)[1].strip())
+                        break
+                    except ValueError:
+                        pass
+            size = os.path.getsize(full)
+            if chunk_param is not None:
+                if chunk_param < 1:
+                    self.send_error(400, "Invalid chunk")
+                    return
+                start = (chunk_param - 1) * CHUNK_SIZE
+                if start >= size:
+                    self.send_error(404, "Chunk out of range")
+                    return
+                end = min(start + CHUNK_SIZE, size) - 1
+                self.send_response(206)
+                self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
+                self.send_header("Content-Length", str(end - start + 1))
+                ct, _ = mimetypes.guess_type(full)
+                self.send_header("Content-Type", ct or "application/octet-stream")
+                self.send_header("Content-Disposition", "attachment")
+                self.end_headers()
+                with open(full, "rb") as f:
+                    f.seek(start)
+                    remaining = end - start + 1
+                    while remaining > 0:
+                        buf = f.read(min(8192, remaining))
+                        if not buf:
+                            break
+                        self.wfile.write(buf)
+                        remaining -= len(buf)
+                return
+            # full file: stream in 100MB chunks
+            self.send_response(200)
+            ct, _ = mimetypes.guess_type(full)
+            self.send_header("Content-Type", ct or "application/octet-stream")
+            self.send_header("Content-Disposition", "attachment")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            with open(full, "rb") as f:
+                while True:
+                    buf = f.read(CHUNK_SIZE)
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+            return
+
+        def log_message(self, format, *args):
+            pass
+
+    HTTPServer(("", PORT), Handler).serve_forever()

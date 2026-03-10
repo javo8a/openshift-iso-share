@@ -13,15 +13,11 @@ data:
         index        index.html;
 
         location / {
-            autoindex on;
-            autoindex_exact_size off;
-            autoindex_localtime on;
-            autoindex_format html;
-            add_header Content-Disposition "inline";
-        }
-
-        location ~* \.(iso)$ {
-            add_header Content-Disposition "attachment";
-            add_header Content-Type application/octet-stream;
+            proxy_pass http://127.0.0.1:9000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
     }

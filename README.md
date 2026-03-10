@@ -39,6 +39,15 @@ oc rsync /path/to/your-image.iso $POD:/usr/share/nginx/html/
 2. Open `https://<hostname>/` to see the directory listing
 3. Click your ISO filename to download, or use: `https://<hostname>/your-image.iso`
 
+### Large files (100 MB chunks)
+
+For files larger than 100 MB, the listing page shows:
+
+- **Chunks (100 MB)**: separate links for each 100 MB part (Part 1, Part 2, …) so you can download or resume in segments.
+- **Full file**: a single link that streams the entire file (server reads in 100 MB chunks, so you get one continuous download).
+
+Use chunks when you want to download in parts or combine them later; use **Full file** for one direct download.
+
 ## Backing up the ISO
 
 ### Copy from the pod to your machine (`oc cp`)
