@@ -44,6 +44,34 @@ spec:
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
+        - name: listing
+          image: python:3.12-alpine
+          env:
+            - name: PORT
+              value: "9000"
+            - name: ISO_ROOT
+              value: /data
+          volumeMounts:
+            - name: iso-data
+              mountPath: /data
+            - name: listing-script
+              mountPath: /app
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          command:
+            - python
+            - /app/server.py
       volumes:
         - name: iso-data
           persistentVolumeClaim:
@@ -51,6 +79,9 @@ spec:
         - name: nginx-config
           configMap:
             name: iso-nginx-config
+        - name: listing-script
+          configMap:
+            name: iso-share-listing
       securityContext:
         runAsNonRoot: true
         seccompProfile:

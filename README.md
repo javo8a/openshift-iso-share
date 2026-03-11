@@ -39,6 +39,19 @@ oc rsync /path/to/your-image.iso $POD:/usr/share/nginx/html/
 2. Open `https://<hostname>/` to see the directory listing
 3. Click your ISO filename to download, or use: `https://<hostname>/your-image.iso`
 
+### Large files (97 MB chunks)
+
+For files larger than 97 MB, the listing page shows:
+
+- **Chunks (97 MB)**: separate links for each 97 MB part (Part aa, Part ab, …) so you can download or resume in segments.
+- **Full file**: a single link that streams the entire file (server reads in 97 MB chunks, so you get one continuous download).
+
+Use chunks when you want to download in parts or combine them later; use **Full file** for one direct download.
+
+**MD5 column:** The listing shows an MD5 checksum for each file when available. No hashing is done at request time (keeps the page fast). To show MD5, add pre-computed checksums either as a sidecar file per file (e.g. `file.iso.md5` containing the 32‑char hex hash) or as a manifest in the directory: `MD5SUMS` or `md5sum.txt` with lines like `hash  filename`. Example: `md5sum image.iso >> MD5SUMS` then upload `MD5SUMS` next to your files.
+
+**Download all chunks (one click):** For chunked files, the **Download all** button fetches each part in order, combines them in memory, and triggers a single download with the original filename. You get one save dialog and one file—no special browser permissions. For very large files this uses RAM equal to the file size; if the tab runs out of memory, use the individual **Part aa**, **Part ab**, … links and combine them locally (e.g. `cat file.iso.part* > file.iso`). Chunk files use the suffix `.partaa`, `.partab`, `.partac`, … so they sort correctly when concatenating.
+
 ## Backing up the ISO
 
 ### Copy from the pod to your machine (`oc cp`)

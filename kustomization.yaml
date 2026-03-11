@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - pvc.yaml
   - nginx-configmap.yaml
+  - iso-share-listing-configmap.yaml
   - html-proxy-configmap.yaml
   - buildconfig.yaml
   - deployment.yaml
