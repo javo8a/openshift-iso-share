@@ -9,6 +9,7 @@ data:
     #!/usr/bin/env python3
     """Serves directory listing with 97MB chunk links and streams files (chunked or full)."""
     import os
+    import re
     import mimetypes
     from http.server import HTTPServer, BaseHTTPRequestHandler
     from urllib.parse import unquote, urlparse
@@ -54,7 +55,7 @@ data:
         if base_path:
             parent = os.path.dirname(base_path.rstrip("/"))
             rows.append(
-                '<tr><td colspan="5"><a href="%s">../</a></td></tr>'
+                '<tr><td colspan="6"><a href="%s">../</a></td></tr>'
                 % (parent + "/" if parent else "/")
             )
         for e in entries:
@@ -64,7 +65,7 @@ data:
                 if not href.startswith("/"):
                     href = "/" + href
                 rows.append(
-                    '<tr><td><a href="%s">%s/</a></td><td></td><td></td><td></td><td></td></tr>'
+                    '<tr><td><a href="%s">%s/</a></td><td></td><td></td><td></td><td></td><td></td></tr>'
                     % (href, html_escape(name))
                 )
             else:
@@ -88,16 +89,49 @@ data:
                         '<button type="button" class="dl-all-btn" data-href="%s" data-name="%s" data-nchunks="%d">Download all chunks</button>'
                         % (html_escape(href_file), html_escape(name), n_chunks)
                     )
+                    md5_val = read_md5_for_file(dir_path, name)
+                    md5_cell = '<code>%s</code>' % html_escape(md5_val) if md5_val else "—"
                     rows.append(
-                        '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
-                        % (html_escape(name), format_size(size), chunk_cell, full_link, dl_all_btn)
+                        '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                        % (html_escape(name), format_size(size), chunk_cell, full_link, dl_all_btn, md5_cell)
                     )
                 else:
+                    md5_val = read_md5_for_file(dir_path, name)
+                    md5_cell = '<code>%s</code>' % html_escape(md5_val) if md5_val else "—"
                     rows.append(
-                        '<tr><td><a href="%s">%s</a></td><td>%s</td><td></td><td></td><td></td></tr>'
-                        % (href_file, html_escape(name), format_size(size))
+                        '<tr><td><a href="%s">%s</a></td><td>%s</td><td></td><td></td><td></td><td>%s</td></tr>'
+                        % (href_file, html_escape(name), format_size(size), md5_cell)
                     )
         return "\n".join(rows)
+
+    def read_md5_for_file(dir_path, filename):
+        """Read pre-computed MD5 from sidecar (.md5) or manifest (MD5SUMS). No hashing."""
+        # Sidecar: file.iso.md5 or file.iso.MD5 (content: hash or "hash  filename")
+        for ext in (".md5", ".MD5"):
+            path = os.path.join(dir_path, filename + ext)
+            try:
+                with open(path, "r") as f:
+                    line = f.readline()
+                    if line:
+                        m = re.match(r"([a-fA-F0-9]{32})\s", line)
+                        if m:
+                            return m.group(1).lower()
+                        if re.match(r"^[a-fA-F0-9]{32}\s*$", line.strip()):
+                            return line.strip()[:32].lower()
+            except OSError:
+                pass
+        # Manifest: MD5SUMS or md5sum.txt in same dir ("hash  filename" or "hash *filename")
+        for manifest in ("MD5SUMS", "md5sum.txt", "md5sums"):
+            mpath = os.path.join(dir_path, manifest)
+            try:
+                with open(mpath, "r") as f:
+                    for line in f:
+                        m = re.match(r"([a-fA-F0-9]{32})\s+[\* ]?(.+)$", line.strip())
+                        if m and m.group(2).strip() == filename:
+                            return m.group(1).lower()
+            except OSError:
+                pass
+        return None
 
     def html_escape(s):
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
@@ -128,7 +162,7 @@ data:
                     "td,th{padding:6px 12px;text-align:left} a{color:#06c} .dl-all-btn{padding:6px 12px;cursor:pointer;background:#06c;color:#fff;border:none;border-radius:4px}"
                     ".dl-all-btn:hover{background:#05a} .dl-all-btn:disabled{opacity:.6;cursor:not-allowed}"
                     "#dl-status{margin-top:12px;font-size:14px}</style></head><body>"
-                    "<h1>Index of %s</h1><div id='dl-status'></div><table><tr><th>Name</th><th>Size</th><th>Chunks (97 MB)</th><th>Full</th><th>Download all</th></tr>%s</table>"
+                    "<h1>Index of %s</h1><div id='dl-status'></div><table><tr><th>Name</th><th>Size</th><th>Chunks (97 MB)</th><th>Full</th><th>Download all</th><th>MD5</th></tr>%s</table>"
                     "<script>"
                     "document.querySelectorAll('.dl-all-btn').forEach(function(btn){"
                     "btn.onclick=function(){"
